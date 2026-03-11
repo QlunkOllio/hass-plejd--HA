@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from homeassistant.core import callback, HomeAssistant
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers import device_registry as dr
+from homeassistant.util import dt as dt_util
 from homeassistant.const import EntityCategory
 
 from .const import DOMAIN, MANUFACTURER
@@ -14,6 +16,8 @@ from .plejd_site import dt
 
 if TYPE_CHECKING:
     from .plejd_site import PlejdSite
+
+AVAILABILITY_GRACE_PERIOD = timedelta(minutes=2)
 
 
 class PlejdDeviceBaseEntity(Entity):
@@ -29,6 +33,7 @@ class PlejdDeviceBaseEntity(Entity):
         self.site = site
         self.listener = None
         self._data = {}
+        self._last_available = None
 
     async def _ensure_connected(self) -> None:
         """Reconnect to mesh before sending a command if currently unavailable."""
@@ -62,8 +67,16 @@ class PlejdDeviceBaseEntity(Entity):
 
     @property
     def available(self) -> bool:
-        """Returns whether the switch is avaiable."""
-        return self._data.get("available", False)
+        """Returns whether the entity is available.
+
+        Keeps the entity available for a grace period after the last known
+        connection, so short BLE dropouts don't cause unavailable flicker in HA.
+        """
+        if self._data.get("available", False):
+            return True
+        if self._last_available is None:
+            return False
+        return (dt_util.utcnow() - self._last_available) < AVAILABILITY_GRACE_PERIOD
 
     @callback
     def _handle_update(self, data) -> None:
@@ -75,6 +88,8 @@ class PlejdDeviceBaseEntity(Entity):
 
         def _listener(data):
             self._data = data
+            if data.get("available", False):
+                self._last_available = dt_util.utcnow()
             self._handle_update(data)
             self.async_write_ha_state()
 
