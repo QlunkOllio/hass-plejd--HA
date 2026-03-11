@@ -22,7 +22,7 @@ class PlejdDeviceBaseEntity(Entity):
     _attr_has_entity_name = True
     _attr_name = None
 
-    def __init__(self, device: dt.PlejdDevice, site: PlejdSite):
+    def __init__(self, device: dt.PlejdDevice, site: PlejdSite | None = None):
         """Set up entity."""
         super().__init__()
         self.device = device
